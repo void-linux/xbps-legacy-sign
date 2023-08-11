@@ -1,9 +1,11 @@
 package main
 
 import (
+	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
+	"crypto"
 	"encoding/pem"
 	"flag"
 	"fmt"
@@ -15,7 +17,7 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 
-	"github.com/Duncaen/go-xbps/crypto"
+	xbps_crypto "github.com/Duncaen/go-xbps/crypto"
 )
 
 func hashFile(path string) ([]byte, error) {
@@ -31,32 +33,77 @@ func hashFile(path string) ([]byte, error) {
 	return h.Sum(nil), nil
 }
 
-func sign(priv *rsa.PrivateKey, filepath string) error {
-	sigpath := filepath + ".sig"
-	if _, err := os.Stat(sigpath); err == nil {
-		return nil
-	} else if !os.IsNotExist(err) {
-		return err
-	}
-	log.Printf("Signing: %s\n", filepath)
-	hash, err := hashFile(filepath)
+func sign1(priv *rsa.PrivateKey, hash []byte, path string) error {
+	sig, err := xbps_crypto.Sign(priv, hash)
 	if err != nil {
 		return err
 	}
-	sig, err := crypto.Sign(priv, hash)
-	if err != nil {
-		return err
-	}
-	sigf, err := os.Create(sigpath)
+	sigf, err := os.Create(path)
 	if err != nil {
 		return err
 	}
 	if _, err := sigf.Write(sig); err != nil {
 		sigf.Close()
-		os.Remove(sigpath)
+		os.Remove(path)
 		return err
 	}
 	return sigf.Close()
+}
+
+func sign2(priv *rsa.PrivateKey, hash []byte, path string) error {
+	sig, err := rsa.SignPKCS1v15(rand.Reader, priv, crypto.SHA256, hash)
+	if err != nil {
+		return err
+	}
+	sigf, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	if _, err := sigf.Write(sig); err != nil {
+		sigf.Close()
+		os.Remove(path)
+		return err
+	}
+	return sigf.Close()
+}
+
+func missing(path string) (bool, error) {
+	if _, err := os.Stat(path); err == nil {
+		return false, nil
+	} else if !os.IsNotExist(err) {
+		return false, err
+	}
+	return true, nil
+}
+
+func sign(priv *rsa.PrivateKey, path string) error {
+	needSig1, err := missing(path + ".sig")
+	if err != nil {
+		return err
+	}
+	needSig2, err  := missing(path + ".sig2")
+	if err != nil {
+		return err
+	}
+	if !needSig1 && !needSig2 {
+		return nil
+	}
+	log.Printf("Signing: %s\n", path)
+	hash, err := hashFile(path)
+	if err != nil {
+		return err
+	}
+	if needSig1 {
+		if err := sign1(priv, hash, path + ".sig"); err != nil {
+			return err
+		}
+	}
+	if needSig2 {
+		if err := sign2(priv, hash, path + ".sig2"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func watch(priv *rsa.PrivateKey, dirs []string) error {
