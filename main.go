@@ -33,21 +33,29 @@ func hashFile(path string) ([]byte, error) {
 	return h.Sum(nil), nil
 }
 
+func writeToFileAtomic(path string, data []byte) error {
+	sigf, err := os.CreateTemp(filepath.Dir(path), "." + filepath.Base(path) + ".*")
+	if err != nil {
+		return err
+	}
+	tmpfile := sigf.Name()
+	if _, err := sigf.Write(data); err != nil {
+		sigf.Close()
+		os.Remove(tmpfile)
+		return err
+	}
+	if err := sigf.Close(); err != nil {
+		return os.Remove(tmpfile)
+	}
+	return os.Rename(tmpfile, path)
+}
+
 func sign1(priv *rsa.PrivateKey, hash []byte, path string) error {
 	sig, err := xbps_crypto.Sign(priv, hash)
 	if err != nil {
 		return err
 	}
-	sigf, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	if _, err := sigf.Write(sig); err != nil {
-		sigf.Close()
-		os.Remove(path)
-		return err
-	}
-	return sigf.Close()
+	return writeToFileAtomic(path, sig)
 }
 
 func sign2(priv *rsa.PrivateKey, hash []byte, path string) error {
@@ -55,16 +63,7 @@ func sign2(priv *rsa.PrivateKey, hash []byte, path string) error {
 	if err != nil {
 		return err
 	}
-	sigf, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	if _, err := sigf.Write(sig); err != nil {
-		sigf.Close()
-		os.Remove(path)
-		return err
-	}
-	return sigf.Close()
+	return writeToFileAtomic(path, sig)
 }
 
 func missing(path string) (bool, error) {
