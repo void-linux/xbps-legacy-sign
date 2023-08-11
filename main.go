@@ -1,11 +1,11 @@
 package main
 
 import (
+	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
-	"crypto"
 	"encoding/pem"
 	"flag"
 	"fmt"
@@ -34,7 +34,7 @@ func hashFile(path string) ([]byte, error) {
 }
 
 func writeToFileAtomic(path string, data []byte) error {
-	sigf, err := os.CreateTemp(filepath.Dir(path), "." + filepath.Base(path) + ".*")
+	sigf, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
 	if err != nil {
 		return err
 	}
@@ -80,7 +80,7 @@ func sign(priv *rsa.PrivateKey, path string) error {
 	if err != nil {
 		return err
 	}
-	needSig2, err  := missing(path + ".sig2")
+	needSig2, err := missing(path + ".sig2")
 	if err != nil {
 		return err
 	}
@@ -93,12 +93,12 @@ func sign(priv *rsa.PrivateKey, path string) error {
 		return err
 	}
 	if needSig1 {
-		if err := sign1(priv, hash, path + ".sig"); err != nil {
+		if err := sign1(priv, hash, path+".sig"); err != nil {
 			return err
 		}
 	}
 	if needSig2 {
-		if err := sign2(priv, hash, path + ".sig2"); err != nil {
+		if err := sign2(priv, hash, path+".sig2"); err != nil {
 			return err
 		}
 	}
@@ -173,8 +173,8 @@ func loadPrivateKey(path string, passphrase []byte) (*rsa.PrivateKey, error) {
 }
 
 var (
-	privKeyFlag = flag.String("private-key", "", "private key path")
-	watchFlag = flag.Bool("watch", false, "watch for changes to sign new files")
+	privKeyFlag        = flag.String("private-key", "", "private key path")
+	watchFlag          = flag.Bool("watch", false, "watch for changes to sign new files")
 	passphraseFileFlag = flag.String("passphrase-file", "", "passphrase file path")
 )
 
@@ -196,7 +196,7 @@ func main() {
 		log.Fatal(err)
 	}
 	if *watchFlag {
-		log.Fatal(watch(privKey,flag.Args()))
+		log.Fatal(watch(privKey, flag.Args()))
 	} else {
 		for _, path := range flag.Args() {
 			if !strings.HasSuffix(path, ".xbps") {
