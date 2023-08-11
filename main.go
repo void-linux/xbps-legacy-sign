@@ -146,18 +146,27 @@ func watch(priv *rsa.PrivateKey, dirs []string) error {
 	}
 }
 
-func loadPrivateKey(path string) (*rsa.PrivateKey, error) {
+func loadPrivateKey(path string, passphrase []byte) (*rsa.PrivateKey, error) {
 	pemBytes, err := os.ReadFile(*privKeyFlag)
 	if err != nil {
 		return nil, err
 	}
 	block, _ := pem.Decode(pemBytes)
+	var buf []byte
 	if strings.Contains(block.Headers["Proc-Type"], "ENCRYPTED") {
-		return nil, fmt.Errorf("encrypted private keys not supported")
+		buf, err = x509.DecryptPEMBlock(block, passphrase)
+		if err != nil {
+			if err == x509.IncorrectPasswordError {
+				return nil, err
+			}
+			return nil, err
+		}
+	} else {
+		buf = block.Bytes
 	}
 	switch block.Type {
 	case "RSA PRIVATE KEY":
-		return x509.ParsePKCS1PrivateKey(block.Bytes)
+		return x509.ParsePKCS1PrivateKey(buf)
 	default:
 		return nil, fmt.Errorf("unsupported private key format: %s\n", block.Type)
 	}
@@ -166,14 +175,23 @@ func loadPrivateKey(path string) (*rsa.PrivateKey, error) {
 var (
 	privKeyFlag = flag.String("private-key", "", "private key path")
 	watchFlag = flag.Bool("watch", false, "watch for changes to sign new files")
+	passphraseFileFlag = flag.String("passphrase-file", "", "passphrase file path")
 )
 
 func main() {
 	flag.Parse()
+	var passphrase []byte
 	if *privKeyFlag == "" {
 		log.Fatal("-private-key flag required")
 	}
-	privKey, err := loadPrivateKey(*privKeyFlag)
+	if *passphraseFileFlag != "" {
+		var err error
+		passphrase, err = os.ReadFile(*passphraseFileFlag)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+	privKey, err := loadPrivateKey(*privKeyFlag, passphrase)
 	if err != nil {
 		log.Fatal(err)
 	}
