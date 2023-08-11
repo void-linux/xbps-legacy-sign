@@ -10,7 +10,10 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
+
+	"github.com/fsnotify/fsnotify"
 
 	"github.com/Duncaen/go-xbps/crypto"
 )
@@ -28,7 +31,13 @@ func hashFile(path string) ([]byte, error) {
 	return h.Sum(nil), nil
 }
 
-func sign(priv *rsa.PrivateKey, filepath, sigpath string) error {
+func sign(priv *rsa.PrivateKey, filepath string) error {
+	sigpath := filepath + ".sig"
+	if _, err := os.Stat(sigpath); err == nil {
+		return nil
+	} else if !os.IsNotExist(err) {
+		return err
+	}
 	log.Printf("Signing: %s\n", filepath)
 	hash, err := hashFile(filepath)
 	if err != nil {
@@ -50,6 +59,47 @@ func sign(priv *rsa.PrivateKey, filepath, sigpath string) error {
 	return sigf.Close()
 }
 
+func watch(priv *rsa.PrivateKey, dirs []string) error {
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return err
+	}
+	for _, dir := range dirs {
+		err = watcher.Add(dir)
+		if err != nil {
+			log.Fatal(err)
+		}
+		files, err := os.ReadDir(dir)
+		if err != nil {
+			return err
+		}
+		for _, file := range files {
+			if filepath.Ext(file.Name()) != ".xbps" {
+				continue
+			}
+			if err := sign(priv, filepath.Join(dir, file.Name())); err != nil {
+				return err
+			}
+		}
+	}
+	for {
+		select {
+		case event, ok := <-watcher.Events:
+			if !ok {
+				return nil
+			}
+			if !event.Has(fsnotify.Create) || filepath.Ext(event.Name) != ".xbps" {
+				continue
+			}
+			if err := sign(priv, event.Name); err != nil {
+				return err
+			}
+		case err := <-watcher.Errors:
+			return err
+		}
+	}
+}
+
 func loadPrivateKey(path string) (*rsa.PrivateKey, error) {
 	pemBytes, err := os.ReadFile(*privKeyFlag)
 	if err != nil {
@@ -69,6 +119,7 @@ func loadPrivateKey(path string) (*rsa.PrivateKey, error) {
 
 var (
 	privKeyFlag = flag.String("private-key", "", "private key path")
+	watchFlag = flag.Bool("watch", false, "watch for changes to sign new files")
 )
 
 func main() {
@@ -80,19 +131,16 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	for _, path := range flag.Args() {
-		if !strings.HasSuffix(path, ".xbps") {
-			continue
-		}
-		sigpath := path + ".sig"
-		if _, err := os.Stat(sigpath); err == nil {
-			continue
-		} else if !os.IsNotExist(err) {
-			log.Println(err)
-			continue
-		}
-		if err := sign(privKey, path, sigpath); err != nil {
-			log.Println(err)
+	if *watchFlag {
+		log.Fatal(watch(privKey,flag.Args()))
+	} else {
+		for _, path := range flag.Args() {
+			if !strings.HasSuffix(path, ".xbps") {
+				continue
+			}
+			if err := sign(privKey, path); err != nil {
+				log.Println(err)
+			}
 		}
 	}
 }
