@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
@@ -191,6 +192,7 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
+		passphrase = bytes.TrimSpace(passphrase)
 	}
 	privKey, err := loadPrivateKey(*privKeyFlag, passphrase)
 	if err != nil {
