@@ -1,10 +1,9 @@
-FROM golang:1.21-alpine as build
+FROM ghcr.io/void-linux/void-musl:latest as build
 WORKDIR /app
 COPY go.mod go.sum main.go .
-RUN go build -v -o xbps-legacy-sign
+RUN xbps-install -Suy xbps && \
+	xbps-install -y git go && \
+	go build -v -o xbps-legacy-sign
 
-FROM scratch
-COPY --from=build /app/xbps-legacy-sign /xbps-legacy-sign
-ENTRYPOINT [ "/xbps-legacy-sign", "-private-key", "/secrets/id_rsa", \
-	"-passphrase-file", "/secrets/id_rsa_passphrase", "-watch" ]
-CMD [ "/pkgs" ]
+ENTRYPOINT [ "/app/xbps-legacy-sign" ]
+CMD [ "-private-key", "/secrets/id_rsa", "-watch", "/pkgs" ]
