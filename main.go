@@ -49,7 +49,11 @@ func writeToFileAtomic(path string, data []byte) error {
 	if err := sigf.Close(); err != nil {
 		return os.Remove(tmpfile)
 	}
-	return os.Rename(tmpfile, path)
+	if err := os.Rename(tmpfile, path); err != nil {
+		return err
+	}
+
+	return os.Chmod(path, 0644)
 }
 
 func sign1(priv *rsa.PrivateKey, hash []byte, path string) error {
