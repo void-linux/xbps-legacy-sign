@@ -41,15 +41,25 @@ func writeToFileAtomic(path string, data []byte) error {
 		return err
 	}
 	tmpfile := sigf.Name()
+	if err := sigf.Chmod(0644); err != nil {
+		sigf.Close()
+		os.Remove(tmpfile)
+		return err
+	}
 	if _, err := sigf.Write(data); err != nil {
 		sigf.Close()
 		os.Remove(tmpfile)
 		return err
 	}
 	if err := sigf.Close(); err != nil {
-		return os.Remove(tmpfile)
+		os.Remove(tmpfile)
+		return err
 	}
-	return os.Rename(tmpfile, path)
+	if err := os.Rename(tmpfile, path); err != nil {
+		os.Remove(tmpfile)
+		return err
+	}
+	return nil
 }
 
 func sign1(priv *rsa.PrivateKey, hash []byte, path string) error {
